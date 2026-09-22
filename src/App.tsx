@@ -32,30 +32,80 @@ function App() {
         setLoading(false);
       });
   }, []);
-  async function toggleTodo(todo: Todo) {
-  const response = await fetch(`http://localhost:3000/todos/${todo.id}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      completed: !todo.completed,
-    }),
-  });
 
-  if (!response.ok) {
-    setError('Impossible de modifier la tâche');
-    return;
+  async function createTodo(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (newTitle.trim() === '') {
+      return;
+    }
+
+    const response = await fetch('http://localhost:3000/todos', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: newTitle,
+      }),
+    });
+
+    if (!response.ok) {
+      setError('Impossible de créer la tâche');
+      return;
+    }
+
+    const createdTodo: Todo = await response.json();
+
+    setTodos((currentTodos) => [...currentTodos, createdTodo]);
+    setNewTitle('');
   }
 
-  const updatedTodo: Todo = await response.json();
+  async function toggleTodo(todo: Todo) {
+    const response = await fetch(
+      `http://localhost:3000/todos/${todo.id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          completed: !todo.completed,
+        }),
+      },
+    );
 
-  setTodos((currentTodos) =>
-    currentTodos.map((currentTodo) =>
-      currentTodo.id === updatedTodo.id ? updatedTodo : currentTodo,
-    ),
-  );
-}
+    if (!response.ok) {
+      setError('Impossible de modifier la tâche');
+      return;
+    }
+
+    const updatedTodo: Todo = await response.json();
+
+    setTodos((currentTodos) =>
+      currentTodos.map((currentTodo) =>
+        currentTodo.id === updatedTodo.id ? updatedTodo : currentTodo,
+      ),
+    );
+  }
+
+  async function deleteTodo(id: number) {
+    const response = await fetch(
+      `http://localhost:3000/todos/${id}`,
+      {
+        method: 'DELETE',
+      },
+    );
+
+    if (!response.ok) {
+      setError('Impossible de supprimer la tâche');
+      return;
+    }
+
+    setTodos((currentTodos) =>
+      currentTodos.filter((todo) => todo.id !== id),
+    );
+  }
 
   if (loading) {
     return <p>Chargement des tâches...</p>;
@@ -68,61 +118,39 @@ function App() {
   return (
     <main>
       <h1>Mes tâches</h1>
-      <form onSubmit={createTodo}>
-  <input
-    type="text"
-    placeholder="Titre de la nouvelle tâche"
-    value={newTitle}
-    onChange={(event) => setNewTitle(event.target.value)}
-  />
 
-  <button type="submit">Ajouter</button>
-</form>
+      <form onSubmit={createTodo}>
+        <input
+          type="text"
+          placeholder="Titre de la nouvelle tâche"
+          value={newTitle}
+          onChange={(event) => setNewTitle(event.target.value)}
+        />
+
+        <button type="submit">Ajouter</button>
+      </form>
 
       {todos.length === 0 ? (
         <p>Aucune tâche pour le moment.</p>
       ) : (
         <ul>
-        {todos.map((todo) => (
-  <li key={todo.id}>
-    {todo.title} — {todo.completed ? 'Terminée' : 'À faire'}
+          {todos.map((todo) => (
+            <li key={todo.id}>
+              {todo.title} — {todo.completed ? 'Terminée' : 'À faire'}
 
-    <button onClick={() => toggleTodo(todo)}>
-      {todo.completed ? 'Remettre à faire' : 'Terminer'}
-    </button>
-  </li>
-))}
+              <button onClick={() => toggleTodo(todo)}>
+                {todo.completed ? 'Remettre à faire' : 'Terminer'}
+              </button>
+
+              <button onClick={() => deleteTodo(todo.id)}>
+                Supprimer
+              </button>
+            </li>
+          ))}
         </ul>
       )}
     </main>
   );
-  async function createTodo(event: React.FormEvent<HTMLFormElement>) {
-  event.preventDefault();
-
-  if (!newTitle.trim()) {
-    return;
-  }
-
-  const response = await fetch('http://localhost:3000/todos', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      title: newTitle,
-    }),
-  });
-
-  if (!response.ok) {
-    setError('Impossible de créer la tâche');
-    return;
-  }
-
-  const createdTodo: Todo = await response.json();
-
-  setTodos((currentTodos) => [...currentTodos, createdTodo]);
-  setNewTitle('');
-}
 }
 
 export default App;
