@@ -109,3 +109,30 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+.todo-information {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.todo-title {
+  font-size: 17px;
+}
+
+.todo-status {
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.button-toggle,
+.button-undo {
+  background: #ea580c;
+}
+
+.button-toggle:hover,
+.button-undo:hover {
+  background: #c2410c;
+}
