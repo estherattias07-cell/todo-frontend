@@ -1,122 +1,212 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useEffect, useState } from 'react';
+import './App.css';
 
-function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+interface Todo {
+  id: number;
+  title: string;
+  completed: boolean;
 }
 
-export default App
+function App() {
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [newTitle, setNewTitle] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetch('http://localhost:3000/todos')
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Impossible de récupérer les tâches');
+        }
+
+        return response.json();
+      })
+      .then((data: Todo[]) => {
+        setTodos(data);
+      })
+      .catch((error: Error) => {
+        setError(error.message);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  async function createTodo(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (newTitle.trim() === '') {
+      return;
+    }
+
+    const response = await fetch('http://localhost:3000/todos', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: newTitle,
+      }),
+    });
+
+    if (!response.ok) {
+      setError('Impossible de créer la tâche');
+      return;
+    }
+
+    const createdTodo: Todo = await response.json();
+
+    setTodos((currentTodos) => [...currentTodos, createdTodo]);
+    setNewTitle('');
+  }
+
+  async function toggleTodo(todo: Todo) {
+    const response = await fetch(
+      `http://localhost:3000/todos/${todo.id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          completed: !todo.completed,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      setError('Impossible de modifier la tâche');
+      return;
+    }
+
+    const updatedTodo: Todo = await response.json();
+
+    setTodos((currentTodos) =>
+      currentTodos.map((currentTodo) =>
+        currentTodo.id === updatedTodo.id ? updatedTodo : currentTodo,
+      ),
+    );
+  }
+
+  async function deleteTodo(id: number) {
+    const response = await fetch(
+      `http://localhost:3000/todos/${id}`,
+      {
+        method: 'DELETE',
+      },
+    );
+
+    if (!response.ok) {
+      setError('Impossible de supprimer la tâche');
+      return;
+    }
+
+    setTodos((currentTodos) =>
+      currentTodos.filter((todo) => todo.id !== id),
+    );
+  }
+
+  async function editTodo(todo: Todo) {
+  const newTodoTitle = window.prompt(
+    'Nouveau titre de la tâche :',
+    todo.title,
+  );
+
+  if (newTodoTitle === null || newTodoTitle.trim() === '') {
+    return;
+  }
+
+  const response = await fetch(
+    `http://localhost:3000/todos/${todo.id}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: newTodoTitle.trim(),
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    setError('Impossible de modifier le titre');
+    return;
+  }
+
+  const updatedTodo: Todo = await response.json();
+
+  setTodos((currentTodos) =>
+    currentTodos.map((currentTodo) =>
+      currentTodo.id === updatedTodo.id ? updatedTodo : currentTodo,
+    ),
+  );
+}
+
+  if (loading) {
+    return <p>Chargement des tâches...</p>;
+  }
+
+  if (error) {
+    return <p>Erreur : {error}</p>;
+  }
+
+  return (
+  <main>
+    <h1>Mes tâches</h1>
+
+    <form onSubmit={createTodo}>
+      <input
+        type="text"
+        placeholder="Titre de la nouvelle tâche"
+        value={newTitle}
+        onChange={(event) => setNewTitle(event.target.value)}
+      />
+
+      <button type="submit">Ajouter</button>
+    </form>
+
+    {todos.length === 0 ? (
+      <p>Aucune tâche pour le moment.</p>
+    ) : (
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>
+            <div className="todo-information">
+              <span className="todo-title">{todo.title}</span>
+
+              <strong className="todo-status">
+                {todo.completed ? 'TERMINÉE' : 'À FAIRE'}
+              </strong>
+            </div>
+
+            <button
+              className="button-toggle"
+              onClick={() => toggleTodo(todo)}
+            >
+              {todo.completed ? 'Remettre à faire' : 'Terminer'}
+            </button>
+
+            <button
+              className="button-edit"
+              onClick={() => editTodo(todo)}
+            >
+              Modifier
+            </button>
+
+            <button
+              className="button-delete"
+              onClick={() => deleteTodo(todo.id)}
+            >
+              Supprimer
+            </button>
+          </li>
+        ))}
+      </ul>
+    )}
+  </main>
+);
+}
+
+export default App;
