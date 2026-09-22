@@ -107,6 +107,43 @@ function App() {
     );
   }
 
+  async function editTodo(todo: Todo) {
+  const newTodoTitle = window.prompt(
+    'Nouveau titre de la tâche :',
+    todo.title,
+  );
+
+  if (newTodoTitle === null || newTodoTitle.trim() === '') {
+    return;
+  }
+
+  const response = await fetch(
+    `http://localhost:3000/todos/${todo.id}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: newTodoTitle.trim(),
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    setError('Impossible de modifier le titre');
+    return;
+  }
+
+  const updatedTodo: Todo = await response.json();
+
+  setTodos((currentTodos) =>
+    currentTodos.map((currentTodo) =>
+      currentTodo.id === updatedTodo.id ? updatedTodo : currentTodo,
+    ),
+  );
+}
+
   if (loading) {
     return <p>Chargement des tâches...</p>;
   }
@@ -140,6 +177,10 @@ function App() {
 
               <button onClick={() => toggleTodo(todo)}>
                 {todo.completed ? 'Remettre à faire' : 'Terminer'}
+              </button>
+
+              <button onClick={() => editTodo(todo)}>
+                Modifier
               </button>
 
               <button onClick={() => deleteTodo(todo.id)}>
