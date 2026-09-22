@@ -153,45 +153,60 @@ function App() {
   }
 
   return (
-    <main>
-      <h1>Mes tâches</h1>
+  <main>
+    <h1>Mes tâches</h1>
 
-      <form onSubmit={createTodo}>
-        <input
-          type="text"
-          placeholder="Titre de la nouvelle tâche"
-          value={newTitle}
-          onChange={(event) => setNewTitle(event.target.value)}
-        />
+    <form onSubmit={createTodo}>
+      <input
+        type="text"
+        placeholder="Titre de la nouvelle tâche"
+        value={newTitle}
+        onChange={(event) => setNewTitle(event.target.value)}
+      />
 
-        <button type="submit">Ajouter</button>
-      </form>
+      <button type="submit">Ajouter</button>
+    </form>
 
-      {todos.length === 0 ? (
-        <p>Aucune tâche pour le moment.</p>
-      ) : (
-        <ul>
-          {todos.map((todo) => (
-            <li key={todo.id}>
-              {todo.title} — {todo.completed ? 'Terminée' : 'À faire'}
+    {todos.length === 0 ? (
+      <p>Aucune tâche pour le moment.</p>
+    ) : (
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>
+            <div className="todo-information">
+              <span className="todo-title">{todo.title}</span>
 
-              <button onClick={() => toggleTodo(todo)}>
-                {todo.completed ? 'Remettre à faire' : 'Terminer'}
-              </button>
+              <strong className="todo-status">
+                {todo.completed ? 'TERMINÉE' : 'À FAIRE'}
+              </strong>
+            </div>
 
-              <button onClick={() => editTodo(todo)}>
-                Modifier
-              </button>
+            <button
+              className="button-toggle"
+              onClick={() => toggleTodo(todo)}
+            >
+              {todo.completed ? 'Remettre à faire' : 'Terminer'}
+            </button>
 
-              <button onClick={() => deleteTodo(todo.id)}>
-                Supprimer
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </main>
-  );
+            <button
+              className="button-edit"
+              onClick={() => editTodo(todo)}
+            >
+              Modifier
+            </button>
+
+            <button
+              className="button-delete"
+              onClick={() => deleteTodo(todo.id)}
+            >
+              Supprimer
+            </button>
+          </li>
+        ))}
+      </ul>
+    )}
+  </main>
+);
 }
 
 export default App;
