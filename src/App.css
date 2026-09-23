@@ -134,3 +134,21 @@ li button:last-child:hover {
 .button-delete:hover {
   background: #b91c1c;
 }
+.button-details {
+  background-color: #facc15;
+  color: #1f2937;
+}
+
+.button-details:hover {
+  background-color: #eab308;
+}
+.button-details,
+.button-close {
+  background-color: #facc15;
+  color: #1f2937;
+}
+
+.button-details:hover,
+.button-close:hover {
+  background-color: #eab308;
+}

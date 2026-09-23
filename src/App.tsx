@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import './App.css';
 
 interface Todo {
@@ -7,64 +8,81 @@ interface Todo {
   completed: boolean;
 }
 
+const API_URL = 'http://localhost:3000/todos';
+
 function App() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTitle, setNewTitle] = useState('');
+  const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Récupérer toutes les tâches
   useEffect(() => {
-    fetch('http://localhost:3000/todos')
-      .then((response) => {
+    async function loadTodos() {
+      try {
+        const response = await fetch(API_URL);
+
         if (!response.ok) {
           throw new Error('Impossible de récupérer les tâches');
         }
 
-        return response.json();
-      })
-      .then((data: Todo[]) => {
+        const data: Todo[] = await response.json();
         setTodos(data);
-      })
-      .catch((error: Error) => {
-        setError(error.message);
-      })
-      .finally(() => {
+      } catch (error) {
+        if (error instanceof Error) {
+          setError(error.message);
+        }
+      } finally {
         setLoading(false);
-      });
+      }
+    }
+
+    loadTodos();
   }, []);
 
-  async function createTodo(event: React.FormEvent<HTMLFormElement>) {
+  // Créer une nouvelle tâche
+  async function createTodo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (newTitle.trim() === '') {
       return;
     }
 
-    const response = await fetch('http://localhost:3000/todos', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title: newTitle,
-      }),
-    });
+    try {
+      setError('');
 
-    if (!response.ok) {
-      setError('Impossible de créer la tâche');
-      return;
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Impossible de créer la tâche');
+      }
+
+      const createdTodo: Todo = await response.json();
+
+      setTodos((currentTodos) => [...currentTodos, createdTodo]);
+      setNewTitle('');
+    } catch (error) {
+      if (error instanceof Error) {
+        setError(error.message);
+      }
     }
-
-    const createdTodo: Todo = await response.json();
-
-    setTodos((currentTodos) => [...currentTodos, createdTodo]);
-    setNewTitle('');
   }
 
+  // Changer le statut d’une tâche
   async function toggleTodo(todo: Todo) {
-    const response = await fetch(
-      `http://localhost:3000/todos/${todo.id}`,
-      {
+    try {
+      setError('');
+
+      const response = await fetch(`${API_URL}/${todo.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -72,141 +90,243 @@ function App() {
         body: JSON.stringify({
           completed: !todo.completed,
         }),
-      },
-    );
+      });
 
-    if (!response.ok) {
-      setError('Impossible de modifier la tâche');
-      return;
+      if (!response.ok) {
+        throw new Error('Impossible de modifier le statut');
+      }
+
+      const updatedTodo: Todo = await response.json();
+
+      setTodos((currentTodos) =>
+        currentTodos.map((currentTodo) =>
+          currentTodo.id === updatedTodo.id
+            ? updatedTodo
+            : currentTodo,
+        ),
+      );
+
+      if (selectedTodo?.id === updatedTodo.id) {
+        setSelectedTodo(updatedTodo);
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        setError(error.message);
+      }
     }
-
-    const updatedTodo: Todo = await response.json();
-
-    setTodos((currentTodos) =>
-      currentTodos.map((currentTodo) =>
-        currentTodo.id === updatedTodo.id ? updatedTodo : currentTodo,
-      ),
-    );
   }
 
-  async function deleteTodo(id: number) {
-    const response = await fetch(
-      `http://localhost:3000/todos/${id}`,
-      {
-        method: 'DELETE',
-      },
-    );
-
-    if (!response.ok) {
-      setError('Impossible de supprimer la tâche');
-      return;
-    }
-
-    setTodos((currentTodos) =>
-      currentTodos.filter((todo) => todo.id !== id),
-    );
-  }
-
+  // Modifier le titre d’une tâche
   async function editTodo(todo: Todo) {
-  const newTodoTitle = window.prompt(
-    'Nouveau titre de la tâche :',
-    todo.title,
-  );
+    const newTodoTitle = window.prompt(
+      'Entrez le nouveau titre :',
+      todo.title,
+    );
 
-  if (newTodoTitle === null || newTodoTitle.trim() === '') {
-    return;
+    if (newTodoTitle === null || newTodoTitle.trim() === '') {
+      return;
+    }
+
+    try {
+      setError('');
+
+      const response = await fetch(`${API_URL}/${todo.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: newTodoTitle.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Impossible de modifier la tâche');
+      }
+
+      const updatedTodo: Todo = await response.json();
+
+      setTodos((currentTodos) =>
+        currentTodos.map((currentTodo) =>
+          currentTodo.id === updatedTodo.id
+            ? updatedTodo
+            : currentTodo,
+        ),
+      );
+
+      if (selectedTodo?.id === updatedTodo.id) {
+        setSelectedTodo(updatedTodo);
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        setError(error.message);
+      }
+    }
   }
 
-  const response = await fetch(
-    `http://localhost:3000/todos/${todo.id}`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title: newTodoTitle.trim(),
-      }),
-    },
-  );
+  // Supprimer une tâche
+  async function deleteTodo(id: number) {
+    const confirmation = window.confirm(
+      'Voulez-vous vraiment supprimer cette tâche ?',
+    );
 
-  if (!response.ok) {
-    setError('Impossible de modifier le titre');
-    return;
+    if (!confirmation) {
+      return;
+    }
+
+    try {
+      setError('');
+
+      const response = await fetch(`${API_URL}/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Impossible de supprimer la tâche');
+      }
+
+      setTodos((currentTodos) =>
+        currentTodos.filter((todo) => todo.id !== id),
+      );
+
+      if (selectedTodo?.id === id) {
+        setSelectedTodo(null);
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        setError(error.message);
+      }
+    }
   }
 
-  const updatedTodo: Todo = await response.json();
+  // Récupérer et afficher le détail d’une tâche
+  async function showTodoDetails(id: number) {
+    try {
+      setError('');
 
-  setTodos((currentTodos) =>
-    currentTodos.map((currentTodo) =>
-      currentTodo.id === updatedTodo.id ? updatedTodo : currentTodo,
-    ),
-  );
-}
+      const response = await fetch(`${API_URL}/${id}`);
+
+      if (!response.ok) {
+        throw new Error(
+          'Impossible de récupérer le détail de la tâche',
+        );
+      }
+
+      const todoDetails: Todo = await response.json();
+      setSelectedTodo(todoDetails);
+    } catch (error) {
+      if (error instanceof Error) {
+        setError(error.message);
+      }
+    }
+  }
 
   if (loading) {
     return <p>Chargement des tâches...</p>;
   }
 
-  if (error) {
-    return <p>Erreur : {error}</p>;
-  }
-
   return (
-  <main>
-    <h1>Mes tâches</h1>
+    <main>
+      <h1>Mes tâches</h1>
 
-    <form onSubmit={createTodo}>
-      <input
-        type="text"
-        placeholder="Titre de la nouvelle tâche"
-        value={newTitle}
-        onChange={(event) => setNewTitle(event.target.value)}
-      />
+      {error && (
+        <p className="error-message">
+          Erreur : {error}
+        </p>
+      )}
 
-      <button type="submit">Ajouter</button>
-    </form>
+      <form onSubmit={createTodo}>
+        <input
+          type="text"
+          placeholder="Titre de la nouvelle tâche"
+          value={newTitle}
+          onChange={(event) => setNewTitle(event.target.value)}
+        />
 
-    {todos.length === 0 ? (
-      <p>Aucune tâche pour le moment.</p>
-    ) : (
-      <ul>
-        {todos.map((todo) => (
-          <li key={todo.id}>
-            <div className="todo-information">
-              <span className="todo-title">{todo.title}</span>
+        <button type="submit">
+          Ajouter
+        </button>
+      </form>
 
-              <strong className="todo-status">
-                {todo.completed ? 'TERMINÉE' : 'À FAIRE'}
-              </strong>
-            </div>
+      {selectedTodo && (
+        <section className="todo-details">
+          <h2>Détail de la tâche</h2>
 
-            <button
-              className="button-toggle"
-              onClick={() => toggleTodo(todo)}
-            >
-              {todo.completed ? 'Remettre à faire' : 'Terminer'}
-            </button>
+          <p>
+            <strong>Numéro :</strong> {selectedTodo.id}
+          </p>
 
-            <button
-              className="button-edit"
-              onClick={() => editTodo(todo)}
-            >
-              Modifier
-            </button>
+          <p>
+            <strong>Titre :</strong> {selectedTodo.title}
+          </p>
 
-            <button
-              className="button-delete"
-              onClick={() => deleteTodo(todo.id)}
-            >
-              Supprimer
-            </button>
-          </li>
-        ))}
-      </ul>
-    )}
-  </main>
-);
+          <p>
+            <strong>État :</strong>{' '}
+            {selectedTodo.completed ? 'TERMINÉE' : 'À FAIRE'}
+          </p>
+
+          <button
+            className="button-close"
+            onClick={() => setSelectedTodo(null)}
+          >
+            Fermer
+          </button>
+        </section>
+      )}
+
+      {todos.length === 0 ? (
+        <p>Aucune tâche pour le moment.</p>
+      ) : (
+        <ul>
+          {todos.map((todo) => (
+            <li key={todo.id}>
+              <div className="todo-information">
+                <span className="todo-title">
+                  {todo.title}
+                </span>
+
+                <strong className="todo-status">
+                  {todo.completed ? 'TERMINÉE' : 'À FAIRE'}
+                </strong>
+              </div>
+
+              <div className="todo-actions">
+                <button
+                  className="button-details"
+                  onClick={() => showTodoDetails(todo.id)}
+                >
+                  Voir le détail
+                </button>
+
+                <button
+                  className="button-edit"
+                  onClick={() => editTodo(todo)}
+                >
+                  Modifier
+                </button>
+
+                <button
+                  className="button-toggle"
+                  onClick={() => toggleTodo(todo)}
+                >
+                  {todo.completed
+                    ? 'Remettre à faire'
+                    : 'Terminer'}
+                </button>
+
+                <button
+                  className="button-delete"
+                  onClick={() => deleteTodo(todo.id)}
+                >
+                  Supprimer
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </main>
+  );
 }
 
 export default App;
