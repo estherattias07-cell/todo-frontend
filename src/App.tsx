@@ -5,7 +5,9 @@ import './App.css';
 interface Todo {
   id: number;
   title: string;
+  description?: string | null;
   completed: boolean;
+  createdAt?: string;
 }
 
 const API_URL = 'http://localhost:3000/todos';
@@ -13,6 +15,7 @@ const API_URL = 'http://localhost:3000/todos';
 function App() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTitle, setNewTitle] = useState('');
+  const [newDescription, setNewDescription] = useState('');
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -41,7 +44,7 @@ function App() {
     loadTodos();
   }, []);
 
-  // Créer une nouvelle tâche
+  // Créer une tâche avec sa description
   async function createTodo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -59,6 +62,7 @@ function App() {
         },
         body: JSON.stringify({
           title: newTitle.trim(),
+          description: newDescription.trim(),
         }),
       });
 
@@ -70,6 +74,7 @@ function App() {
 
       setTodos((currentTodos) => [...currentTodos, createdTodo]);
       setNewTitle('');
+      setNewDescription('');
     } catch (error) {
       if (error instanceof Error) {
         setError(error.message);
@@ -116,7 +121,7 @@ function App() {
     }
   }
 
-  // Modifier le titre d’une tâche
+  // Modifier le titre et la description
   async function editTodo(todo: Todo) {
     const newTodoTitle = window.prompt(
       'Entrez le nouveau titre :',
@@ -124,6 +129,15 @@ function App() {
     );
 
     if (newTodoTitle === null || newTodoTitle.trim() === '') {
+      return;
+    }
+
+    const newTodoDescription = window.prompt(
+      'Entrez la description (facultative) :',
+      todo.description ?? '',
+    );
+
+    if (newTodoDescription === null) {
       return;
     }
 
@@ -137,6 +151,7 @@ function App() {
         },
         body: JSON.stringify({
           title: newTodoTitle.trim(),
+          description: newTodoDescription.trim(),
         }),
       });
 
@@ -199,7 +214,7 @@ function App() {
     }
   }
 
-  // Récupérer et afficher le détail d’une tâche
+  // Récupérer le détail d’une tâche
   async function showTodoDetails(id: number) {
     try {
       setError('');
@@ -238,9 +253,21 @@ function App() {
       <form onSubmit={createTodo}>
         <input
           type="text"
+          aria-label="Titre de la nouvelle tâche"
           placeholder="Titre de la nouvelle tâche"
           value={newTitle}
           onChange={(event) => setNewTitle(event.target.value)}
+          required
+        />
+
+        <input
+          type="text"
+          aria-label="Description de la nouvelle tâche"
+          placeholder="Description (facultative)"
+          value={newDescription}
+          onChange={(event) =>
+            setNewDescription(event.target.value)
+          }
         />
 
         <button type="submit">
@@ -261,9 +288,24 @@ function App() {
           </p>
 
           <p>
+            <strong>Description :</strong>{' '}
+            {selectedTodo.description?.trim() ||
+              'Aucune description'}
+          </p>
+
+          <p>
             <strong>État :</strong>{' '}
             {selectedTodo.completed ? 'TERMINÉE' : 'À FAIRE'}
           </p>
+
+          {selectedTodo.createdAt && (
+            <p>
+              <strong>Date de création :</strong>{' '}
+              {new Date(selectedTodo.createdAt).toLocaleString(
+                'fr-FR',
+              )}
+            </p>
+          )}
 
           <button
             className="button-close"
