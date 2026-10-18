@@ -1,114 +1,212 @@
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: #f4f6fb;
-  font-family: Arial, sans-serif;
-  color: #1f2937;
-}
-
-#root {
-  width: 100%;
-}
-
 main {
-  width: min(700px, calc(100% - 32px));
-  margin: 60px auto;
+  width: min(800px, calc(100% - 32px));
+  margin: 40px auto;
   padding: 32px;
-  background: white;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
   border-radius: 18px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
 }
 
 h1 {
-  margin: 0 0 28px;
+  margin: 0 0 24px;
+  color: #4338ca;
+  font-size: clamp(26px, 5vw, 36px);
+  line-height: 1.2;
   text-align: center;
+}
+
+h2 {
+  margin: 0 0 16px;
+  font-size: 22px;
+  line-height: 1.3;
   color: #4338ca;
 }
 
+p {
+  margin: 0 0 16px;
+  overflow-wrap: anywhere;
+}
+
+/* Formulaires de connexion, d’inscription et de création */
 form {
   display: flex;
-  gap: 10px;
-  margin-bottom: 25px;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 24px 0;
+  padding: 20px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+
+form label {
+  font-weight: bold;
+}
+
+form p {
+  margin: 0;
+  font-size: 14px;
+  color: #4b5563;
 }
 
 input {
-  flex: 1;
-  padding: 12px;
-  border: 1px solid #d1d5db;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
-  font-size: 16px;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+input::placeholder {
+  color: #6b7280;
 }
 
 input:focus {
-  outline: 2px solid #a5b4fc;
+  outline: 3px solid #c7d2fe;
   border-color: #6366f1;
 }
 
+/* Boutons */
 button {
-  padding: 10px 14px;
+  max-width: 100%;
+  min-height: 42px;
+  padding: 10px 16px;
   border: none;
   border-radius: 8px;
   background: #4f46e5;
-  color: white;
+  color: #ffffff;
+  font-weight: bold;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
   cursor: pointer;
+  transition: background-color 0.15s;
 }
 
 button:hover {
   background: #3730a3;
 }
 
+button:focus-visible {
+  outline: 3px solid #818cf8;
+  outline-offset: 3px;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+form button {
+  width: 100%;
+}
+
+main > button {
+  margin-bottom: 16px;
+}
+
+/* Messages */
+.error-message {
+  padding: 12px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+p[role='status'] {
+  padding: 12px 16px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+/* Liste des tâches */
 ul {
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 24px 0 0;
   padding: 0;
   list-style: none;
 }
 
 li {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  padding: 14px;
-  background: #f9fafb;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 18px;
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 12px;
+  background: #f9fafb;
 }
 
-li button:first-of-type {
-  margin-left: auto;
+.todo-information {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
 }
 
-li button:last-child {
-  background: #dc2626;
+.todo-title {
+  max-width: 100%;
+  font-size: 18px;
+  font-weight: bold;
+  overflow-wrap: anywhere;
 }
 
-li button:last-child:hover {
-  background: #b91c1c;
-}
-
-@media (max-width: 600px) {
-  main {
-    margin: 20px auto;
-    padding: 20px;
-  }
-
-  form,
-  li {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  li button:first-of-type {
-    margin-left: 0;
-  }
-}
 .todo-status {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: 12px;
   font-weight: bold;
   text-transform: uppercase;
+}
+
+.todo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.todo-actions button {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+/* Détail d’une tâche */
+.todo-details {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  background: #fffbeb;
+}
+
+.todo-details p {
+  white-space: pre-wrap;
+}
+
+/* Couleurs des actions */
+.button-details,
+.button-close {
+  background: #facc15;
+  color: #1f2937;
+}
+
+.button-details:hover,
+.button-close:hover {
+  background: #eab308;
 }
 
 .button-edit {
@@ -119,10 +217,12 @@ li button:last-child:hover {
   background: #be185d;
 }
 
+.button-toggle,
 .button-undo {
   background: #ea580c;
 }
 
+.button-toggle:hover,
 .button-undo:hover {
   background: #c2410c;
 }
@@ -134,21 +234,26 @@ li button:last-child:hover {
 .button-delete:hover {
   background: #b91c1c;
 }
-.button-details {
-  background-color: #facc15;
-  color: #1f2937;
-}
 
-.button-details:hover {
-  background-color: #eab308;
-}
-.button-details,
-.button-close {
-  background-color: #facc15;
-  color: #1f2937;
-}
+/* Petits écrans */
+@media (max-width: 600px) {
+  main {
+    width: calc(100% - 24px);
+    margin: 16px auto;
+    padding: 20px;
+  }
 
-.button-details:hover,
-.button-close:hover {
-  background-color: #eab308;
+  form,
+  li,
+  .todo-details {
+    padding: 14px;
+  }
+
+  .todo-actions button {
+    flex-basis: 100%;
+  }
+
+  main > button {
+    width: 100%;
+  }
 }
