@@ -20,12 +20,32 @@ interface LoginResponse {
 
 const API_URL = 'http://localhost:3000';
 
-// Lire les messages d’erreur renvoyés par le backend
+function readStorage(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredAuth() {
+  try {
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('connected_email');
+  } catch {
+    // La déconnexion en mémoire reste possible.
+  }
+}
+
 async function getErrorMessage(response: Response): Promise<string> {
   try {
     const data: unknown = await response.json();
 
-    if (typeof data === 'object' && data !== null && 'message' in data) {
+    if (
+      typeof data === 'object' &&
+      data !== null &&
+      'message' in data
+    ) {
       const message = data.message;
 
       if (typeof message === 'string') {
@@ -39,27 +59,34 @@ async function getErrorMessage(response: Response): Promise<string> {
       }
     }
   } catch {
-    // La réponse ne contient pas forcément du JSON.
+    // Certaines réponses ne contiennent pas de JSON.
   }
 
   return `La demande a échoué (${response.status}).`;
 }
 
 function App() {
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(
+    () => readStorage('access_token'),
+  );
+  const [connectedEmail, setConnectedEmail] = useState(
+    () => readStorage('connected_email') ?? '',
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [registerMode, setRegisterMode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [connectedEmail, setConnectedEmail] = useState('');
 
   const logout = useCallback((expired = false) => {
+    clearStoredAuth();
     setToken(null);
     setConnectedEmail('');
     setPassword('');
-    setError(expired ? 'Ta connexion a expiré. Reconnecte-toi.' : '');
+    setError(
+      expired ? 'Ta connexion a expiré. Reconnecte-toi.' : '',
+    );
     setMessage('');
   }, []);
 
@@ -95,9 +122,21 @@ function App() {
       if (registerMode) {
         setRegisterMode(false);
         setPassword('');
-        setMessage('Compte créé ! Connecte-toi avec tes identifiants.');
+        setMessage(
+          'Compte créé ! Connecte-toi avec tes identifiants.',
+        );
       } else {
         const data: LoginResponse = await response.json();
+
+        try {
+          sessionStorage.setItem('access_token', data.access_token);
+          sessionStorage.setItem('connected_email', data.user.email);
+        } catch {
+          clearStoredAuth();
+          throw new Error(
+            'Le navigateur bloque le stockage de la connexion. Vérifie ses paramètres.',
+          );
+        }
 
         setConnectedEmail(data.user.email);
         setPassword('');
@@ -126,7 +165,9 @@ function App() {
 
   return (
     <main>
-      <h1>{registerMode ? 'Créer un compte' : 'Connexion'}</h1>
+      <h1>
+        {registerMode ? 'Créer un compte' : 'Connexion'}
+      </h1>
 
       {error && (
         <p className="error-message" role="alert">
@@ -138,6 +179,7 @@ function App() {
 
       <form onSubmit={submitAuth}>
         <label htmlFor="email">Adresse e-mail</label>
+
         <input
           id="email"
           type="email"
@@ -150,10 +192,13 @@ function App() {
         />
 
         <label htmlFor="password">Mot de passe</label>
+
         <input
           id="password"
           type="password"
-          autoComplete={registerMode ? 'new-password' : 'current-password'}
+          autoComplete={
+            registerMode ? 'new-password' : 'current-password'
+          }
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           minLength={registerMode ? 12 : 1}
@@ -162,7 +207,9 @@ function App() {
           disabled={submitting}
         />
 
-        {registerMode && <p>Choisis au moins 12 caractères.</p>}
+        {registerMode && (
+          <p>Choisis au moins 12 caractères.</p>
+        )}
 
         <button type="submit" disabled={submitting}>
           {submitting
@@ -197,16 +244,21 @@ interface TodosPageProps {
   onLogout: (expired?: boolean) => void;
 }
 
-function TodosPage({ token, email, onLogout }: TodosPageProps) {
+function TodosPage({
+  token,
+  email,
+  onLogout,
+}: TodosPageProps) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
-  const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
+  const [selectedTodo, setSelectedTodo] = useState<Todo | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  // Toutes les demandes de tâches présentent le JWT au backend.
   const request = useCallback(
     async (path: string, options: RequestInit = {}) => {
       const headers = new Headers(options.headers);
@@ -242,6 +294,10 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
 
         const data: Todo[] = await response.json();
 
+        if (!Array.isArray(data)) {
+          throw new Error('La liste reçue est incorrecte.');
+        }
+
         if (!controller.signal.aborted) {
           setTodos(data);
         }
@@ -265,7 +321,6 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
     return () => controller.abort();
   }, [request]);
 
-  // Éviter plusieurs actions simultanées et afficher leurs erreurs.
   async function runAction(action: () => Promise<void>) {
     if (busy) {
       return;
@@ -287,7 +342,9 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
     }
   }
 
-  async function createTodo(event: FormEvent<HTMLFormElement>) {
+  async function createTodo(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
 
     if (!newTitle.trim()) {
@@ -314,7 +371,14 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
     });
   }
 
-  async function updateTodo(id: number, changes: Partial<Todo>) {
+  async function updateTodo(
+    id: number,
+    changes: {
+      title?: string;
+      description?: string;
+      completed?: boolean;
+    },
+  ) {
     const response = await request(`/todos/${id}`, {
       method: 'PATCH',
       headers: {
@@ -326,7 +390,9 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
     const updatedTodo: Todo = await response.json();
 
     setTodos((current) =>
-      current.map((todo) => (todo.id === id ? updatedTodo : todo)),
+      current.map((todo) =>
+        todo.id === id ? updatedTodo : todo,
+      ),
     );
 
     setSelectedTodo((current) =>
@@ -335,7 +401,10 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
   }
 
   async function editTodo(todo: Todo) {
-    const title = window.prompt('Entrez le nouveau titre :', todo.title);
+    const title = window.prompt(
+      'Entrez le nouveau titre :',
+      todo.title,
+    );
 
     if (title === null || !title.trim()) {
       return;
@@ -359,7 +428,11 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
   }
 
   async function deleteTodo(id: number) {
-    if (!window.confirm('Voulez-vous vraiment supprimer cette tâche ?')) {
+    const confirmed = window.confirm(
+      'Voulez-vous vraiment supprimer cette tâche ?',
+    );
+
+    if (!confirmed) {
       return;
     }
 
@@ -368,8 +441,13 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
         method: 'DELETE',
       });
 
-      setTodos((current) => current.filter((todo) => todo.id !== id));
-      setSelectedTodo((current) => (current?.id === id ? null : current));
+      setTodos((current) =>
+        current.filter((todo) => todo.id !== id),
+      );
+
+      setSelectedTodo((current) =>
+        current?.id === id ? null : current,
+      );
     });
   }
 
@@ -407,7 +485,9 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
               aria-label="Titre de la nouvelle tâche"
               placeholder="Titre de la nouvelle tâche"
               value={newTitle}
-              onChange={(event) => setNewTitle(event.target.value)}
+              onChange={(event) =>
+                setNewTitle(event.target.value)
+              }
               maxLength={255}
               required
               disabled={busy}
@@ -418,7 +498,9 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
               aria-label="Description de la nouvelle tâche"
               placeholder="Description (facultative)"
               value={newDescription}
-              onChange={(event) => setNewDescription(event.target.value)}
+              onChange={(event) =>
+                setNewDescription(event.target.value)
+              }
               disabled={busy}
             />
 
@@ -441,18 +523,23 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
 
               <p>
                 <strong>Description :</strong>{' '}
-                {selectedTodo.description?.trim() || 'Aucune description'}
+                {selectedTodo.description?.trim() ||
+                  'Aucune description'}
               </p>
 
               <p>
                 <strong>État :</strong>{' '}
-                {selectedTodo.completed ? 'TERMINÉE' : 'À FAIRE'}
+                {selectedTodo.completed
+                  ? 'TERMINÉE'
+                  : 'À FAIRE'}
               </p>
 
               {selectedTodo.createdAt && (
                 <p>
                   <strong>Date de création :</strong>{' '}
-                  {new Date(selectedTodo.createdAt).toLocaleString('fr-FR')}
+                  {new Date(
+                    selectedTodo.createdAt,
+                  ).toLocaleString('fr-FR')}
                 </p>
               )}
 
@@ -473,23 +560,31 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
               {todos.map((todo) => (
                 <li key={todo.id}>
                   <div className="todo-information">
-                    <span className="todo-title">{todo.title}</span>
+                    <span className="todo-title">
+                      {todo.title}
+                    </span>
 
                     <strong className="todo-status">
-                      {todo.completed ? 'TERMINÉE' : 'À FAIRE'}
+                      {todo.completed
+                        ? 'TERMINÉE'
+                        : 'À FAIRE'}
                     </strong>
                   </div>
 
                   <div className="todo-actions">
                     <button
+                      type="button"
                       className="button-details"
                       disabled={busy}
-                      onClick={() => showTodoDetails(todo.id)}
+                      onClick={() =>
+                        showTodoDetails(todo.id)
+                      }
                     >
                       Voir le détail
                     </button>
 
                     <button
+                      type="button"
                       className="button-edit"
                       disabled={busy}
                       onClick={() => editTodo(todo)}
@@ -498,6 +593,7 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
                     </button>
 
                     <button
+                      type="button"
                       className="button-toggle"
                       disabled={busy}
                       onClick={() =>
@@ -508,10 +604,13 @@ function TodosPage({ token, email, onLogout }: TodosPageProps) {
                         )
                       }
                     >
-                      {todo.completed ? 'Remettre à faire' : 'Terminer'}
+                      {todo.completed
+                        ? 'Remettre à faire'
+                        : 'Terminer'}
                     </button>
 
                     <button
+                      type="button"
                       className="button-delete"
                       disabled={busy}
                       onClick={() => deleteTodo(todo.id)}
