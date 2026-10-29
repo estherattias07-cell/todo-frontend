@@ -18,7 +18,11 @@ interface LoginResponse {
   };
 }
 
-const API_URL = 'http://localhost:3000';
+// Adresse du backend : configurable pour le futur déploiement.
+// Pour le moment, localhost:3000 reste utilisé par défaut.
+const API_URL = (
+  import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+).replace(/\/+$/, '');
 
 function readStorage(key: string): string | null {
   try {
@@ -37,7 +41,9 @@ function clearStoredAuth() {
   }
 }
 
-async function getErrorMessage(response: Response): Promise<string> {
+async function getErrorMessage(
+  response: Response,
+): Promise<string> {
   try {
     const data: unknown = await response.json();
 
@@ -54,7 +60,9 @@ async function getErrorMessage(response: Response): Promise<string> {
 
       if (Array.isArray(message)) {
         return message
-          .filter((item): item is string => typeof item === 'string')
+          .filter(
+            (item): item is string => typeof item === 'string',
+          )
           .join(' ');
       }
     }
@@ -69,9 +77,11 @@ function App() {
   const [token, setToken] = useState<string | null>(
     () => readStorage('access_token'),
   );
+
   const [connectedEmail, setConnectedEmail] = useState(
     () => readStorage('connected_email') ?? '',
   );
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [registerMode, setRegisterMode] = useState(false);
@@ -90,7 +100,9 @@ function App() {
     setMessage('');
   }, []);
 
-  async function submitAuth(event: FormEvent<HTMLFormElement>) {
+  async function submitAuth(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
 
     if (submitting) {
@@ -104,16 +116,19 @@ function App() {
     try {
       const route = registerMode ? 'register' : 'login';
 
-      const response = await fetch(`${API_URL}/auth/${route}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        `${API_URL}/auth/${route}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+            password,
+          }),
         },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-        }),
-      });
+      );
 
       if (!response.ok) {
         throw new Error(await getErrorMessage(response));
@@ -129,8 +144,14 @@ function App() {
         const data: LoginResponse = await response.json();
 
         try {
-          sessionStorage.setItem('access_token', data.access_token);
-          sessionStorage.setItem('connected_email', data.user.email);
+          sessionStorage.setItem(
+            'access_token',
+            data.access_token,
+          );
+          sessionStorage.setItem(
+            'connected_email',
+            data.user.email,
+          );
         } catch {
           clearStoredAuth();
           throw new Error(
@@ -252,9 +273,11 @@ function TodosPage({
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
+
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(
     null,
   );
+
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
