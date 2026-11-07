@@ -1,14 +1,13 @@
 :root {
-  font-family: Arial, sans-serif;
-  font-size: 16px;
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 15px;
   line-height: 1.5;
-  color: #1f2937;
-  background: #f4f6fb;
+  color: #35413c;
+  background: #f5f6f5;
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 *,
@@ -20,7 +19,6 @@
 body {
   margin: 0;
   min-width: 280px;
-  min-height: 100vh;
 }
 
 #root {
@@ -28,7 +26,46 @@ body {
   min-height: 100vh;
 }
 
+main,
+aside,
+section,
+div,
+form,
+nav {
+  min-width: 0;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+button,
 input,
-button {
+textarea,
+select {
+  max-width: 100%;
   font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 3px solid #759780;
+  outline-offset: 3px;
+}
+
+::selection {
+  color: #283b2e;
+  background: #dcebdc;
 }

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import './App.css';
 
+type Role = 'admin' | 'member' | 'viewer';
+
 interface Todo {
   id: number;
   title: string;
@@ -10,19 +12,34 @@ interface Todo {
   createdAt?: string;
 }
 
-interface LoginResponse {
-  access_token: string;
-  user: {
-    id: number;
-    email: string;
-  };
+interface Workspace {
+  id: number;
+  name: string;
+  role: Role;
 }
 
-// Adresse du backend : configurable pour le futur déploiement.
-// Pour le moment, localhost:3000 reste utilisé par défaut.
+interface GroupMember {
+  id: number;
+  email: string;
+  role: Role;
+}
+
+interface LoginResponse {
+  access_token: string;
+  user: { id: number; email: string };
+}
+
+type ApiRequest = (path: string, options?: RequestInit) => Promise<Response>;
+
 const API_URL = (
   import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 ).replace(/\/+$/, '');
+
+const roleLabels: Record<Role, string> = {
+  admin: 'Administrateur',
+  member: 'Membre',
+  viewer: 'Lecture seule',
+};
 
 function readStorage(key: string): string | null {
   try {
@@ -37,32 +54,26 @@ function clearStoredAuth() {
     sessionStorage.removeItem('access_token');
     sessionStorage.removeItem('connected_email');
   } catch {
-    // La déconnexion en mémoire reste possible.
+    // La déconnexion reste possible en mémoire.
   }
 }
 
-async function getErrorMessage(
-  response: Response,
-): Promise<string> {
+function errorText(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : 'Impossible de contacter le serveur.';
+}
+
+async function getErrorMessage(response: Response): Promise<string> {
   try {
     const data: unknown = await response.json();
 
-    if (
-      typeof data === 'object' &&
-      data !== null &&
-      'message' in data
-    ) {
-      const message = data.message;
+    if (typeof data === 'object' && data !== null && 'message' in data) {
+      if (typeof data.message === 'string') return data.message;
 
-      if (typeof message === 'string') {
-        return message;
-      }
-
-      if (Array.isArray(message)) {
-        return message
-          .filter(
-            (item): item is string => typeof item === 'string',
-          )
+      if (Array.isArray(data.message)) {
+        return data.message
+          .filter((item): item is string => typeof item === 'string')
           .join(' ');
       }
     }
@@ -73,15 +84,19 @@ async function getErrorMessage(
   return `La demande a échoué (${response.status}).`;
 }
 
-function App() {
-  const [token, setToken] = useState<string | null>(
-    () => readStorage('access_token'),
-  );
+function jsonOptions(method: 'POST' | 'PATCH', body: object): RequestInit {
+  return {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  };
+}
 
+function App() {
+  const [token, setToken] = useState(() => readStorage('access_token'));
   const [connectedEmail, setConnectedEmail] = useState(
     () => readStorage('connected_email') ?? '',
   );
-
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [registerMode, setRegisterMode] = useState(false);
@@ -94,216 +109,426 @@ function App() {
     setToken(null);
     setConnectedEmail('');
     setPassword('');
-    setError(
-      expired ? 'Ta connexion a expiré. Reconnecte-toi.' : '',
-    );
+    setError(expired ? 'Ta connexion a expiré. Reconnecte-toi.' : '');
     setMessage('');
   }, []);
 
-  async function submitAuth(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (submitting) {
-      return;
-    }
+    if (submitting) return;
 
     setSubmitting(true);
     setError('');
     setMessage('');
 
     try {
-      const route = registerMode ? 'register' : 'login';
-
+      const action = registerMode ? 'register' : 'login';
       const response = await fetch(
-        `${API_URL}/auth/${route}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: email.trim(),
-            password,
-          }),
-        },
+        `${API_URL}/auth/${action}`,
+        jsonOptions('POST', { email: email.trim(), password }),
       );
 
-      if (!response.ok) {
-        throw new Error(await getErrorMessage(response));
-      }
+      if (!response.ok) throw new Error(await getErrorMessage(response));
 
       if (registerMode) {
         setRegisterMode(false);
         setPassword('');
-        setMessage(
-          'Compte créé ! Connecte-toi avec tes identifiants.',
-        );
-      } else {
-        const data: LoginResponse = await response.json();
-
-        try {
-          sessionStorage.setItem(
-            'access_token',
-            data.access_token,
-          );
-          sessionStorage.setItem(
-            'connected_email',
-            data.user.email,
-          );
-        } catch {
-          clearStoredAuth();
-          throw new Error(
-            'Le navigateur bloque le stockage de la connexion. Vérifie ses paramètres.',
-          );
-        }
-
-        setConnectedEmail(data.user.email);
-        setPassword('');
-        setToken(data.access_token);
+        setMessage('Compte créé. Tu peux maintenant te connecter.');
+        return;
       }
+
+      const data: LoginResponse = await response.json();
+
+      try {
+        sessionStorage.setItem('access_token', data.access_token);
+        sessionStorage.setItem('connected_email', data.user.email);
+      } catch {
+        clearStoredAuth();
+        throw new Error('Le navigateur bloque le stockage de la connexion.');
+      }
+
+      setConnectedEmail(data.user.email);
+      setPassword('');
+      setToken(data.access_token);
     } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : 'Impossible de contacter le serveur.',
-      );
+      setError(errorText(caughtError));
     } finally {
       setSubmitting(false);
     }
   }
 
   if (token) {
-    return (
-      <TodosPage
-        token={token}
-        email={connectedEmail}
-        onLogout={logout}
-      />
-    );
+    return <Dashboard token={token} email={connectedEmail} onLogout={logout} />;
   }
 
   return (
-    <main>
-      <h1>
-        {registerMode ? 'Créer un compte' : 'Connexion'}
-      </h1>
+    <main className="login-page">
+      <div className="login-container">
+        <header className="login-heading">
+          <div className="steps-mark" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+          <h1>Avancer<br /><span>pas à pas.</span></h1>
+        </header>
 
-      {error && (
-        <p className="error-message" role="alert">
-          {error}
-        </p>
-      )}
+        <section className="login-card">
+          <h2>{registerMode ? 'Créer un compte' : 'Connexion'}</h2>
 
-      {message && <p role="status">{message}</p>}
+          {error && <p className="notice error" role="alert">{error}</p>}
+          {message && <p className="notice success" role="status">{message}</p>}
 
-      <form onSubmit={submitAuth}>
-        <label htmlFor="email">Adresse e-mail</label>
+          <form className="vertical-form" onSubmit={submitAuth}>
+            <div className="field">
+              <label htmlFor="email">Adresse e-mail</label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                maxLength={254}
+                required
+                disabled={submitting}
+              />
+            </div>
 
-        <input
-          id="email"
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          maxLength={254}
-          required
-          disabled={submitting}
-        />
+            <div className="field">
+              <label htmlFor="password">Mot de passe</label>
+              <input
+                id="password"
+                type="password"
+                autoComplete={registerMode ? 'new-password' : 'current-password'}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                minLength={registerMode ? 12 : 1}
+                maxLength={128}
+                required
+                disabled={submitting}
+              />
+              {registerMode && <small>Au moins 12 caractères.</small>}
+            </div>
 
-        <label htmlFor="password">Mot de passe</label>
+            <button className="primary-button" disabled={submitting}>
+              {submitting
+                ? 'Un instant…'
+                : registerMode ? 'Créer mon compte' : 'Se connecter'}
+            </button>
+          </form>
 
-        <input
-          id="password"
-          type="password"
-          autoComplete={
-            registerMode ? 'new-password' : 'current-password'
-          }
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          minLength={registerMode ? 12 : 1}
-          maxLength={128}
-          required
-          disabled={submitting}
-        />
-
-        {registerMode && (
-          <p>Choisis au moins 12 caractères.</p>
-        )}
-
-        <button type="submit" disabled={submitting}>
-          {submitting
-            ? 'Patiente...'
-            : registerMode
-              ? 'Créer mon compte'
-              : 'Se connecter'}
-        </button>
-      </form>
-
-      <button
-        type="button"
-        disabled={submitting}
-        onClick={() => {
-          setRegisterMode((current) => !current);
-          setPassword('');
-          setError('');
-          setMessage('');
-        }}
-      >
-        {registerMode
-          ? 'Déjà un compte ? Se connecter'
-          : 'Pas de compte ? S’inscrire'}
-      </button>
+          <button
+            className="text-button login-switch"
+            type="button"
+            disabled={submitting}
+            onClick={() => {
+              setRegisterMode((current) => !current);
+              setPassword('');
+              setError('');
+              setMessage('');
+            }}
+          >
+            {registerMode ? 'Déjà un compte ? Se connecter' : 'Créer un compte'}
+          </button>
+        </section>
+      </div>
     </main>
   );
 }
 
-interface TodosPageProps {
-  token: string;
-  email: string;
-  onLogout: (expired?: boolean) => void;
-}
-
-function TodosPage({
+function Dashboard({
   token,
   email,
   onLogout,
-}: TodosPageProps) {
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [newTitle, setNewTitle] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-
-  const [selectedTodo, setSelectedTodo] = useState<Todo | null>(
-    null,
-  );
-
+}: {
+  token: string;
+  email: string;
+  onLogout: (expired?: boolean) => void;
+}) {
+  const [page, setPage] = useState<'personal' | 'groups'>('personal');
+  const [tab, setTab] = useState<'tasks' | 'users'>('tasks');
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaceId, setWorkspaceId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState('');
 
-  const request = useCallback(
-    async (path: string, options: RequestInit = {}) => {
-      const headers = new Headers(options.headers);
-      headers.set('Authorization', `Bearer ${token}`);
+  const request = useCallback<ApiRequest>(async (path, options = {}) => {
+    const headers = new Headers(options.headers);
+    headers.set('Authorization', `Bearer ${token}`);
 
-      const response = await fetch(`${API_URL}${path}`, {
-        ...options,
-        headers,
-      });
+    const response = await fetch(`${API_URL}${path}`, { ...options, headers });
 
-      if (response.status === 401) {
-        onLogout(true);
-        throw new Error('Connexion expirée.');
+    if (response.status === 401) {
+      onLogout(true);
+      throw new Error('Connexion expirée.');
+    }
+
+    if (!response.ok) throw new Error(await getErrorMessage(response));
+    return response;
+  }, [token, onLogout]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadWorkspaces() {
+      try {
+        const response = await request('/workspaces', {
+          signal: controller.signal,
+        });
+        const data: Workspace[] = await response.json();
+
+        if (!Array.isArray(data)) {
+          throw new Error('La liste des groupes est incorrecte.');
+        }
+
+        if (!controller.signal.aborted) setWorkspaces(data);
+      } catch (caughtError) {
+        if (!controller.signal.aborted) setError(errorText(caughtError));
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
+    }
 
-      if (!response.ok) {
-        throw new Error(await getErrorMessage(response));
-      }
+    void loadWorkspaces();
+    return () => controller.abort();
+  }, [request]);
 
-      return response;
-    },
-    [token, onLogout],
+  const workspace = workspaces.find((item) => item.id === workspaceId);
+
+  function openWorkspace(id: number) {
+    setWorkspaceId(id);
+    setTab('tasks');
+    setShowCreate(false);
+  }
+
+  async function createWorkspace(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = workspaceName.trim();
+    if (busy || !name) return;
+
+    setBusy(true);
+    setError('');
+
+    try {
+      const response = await request('/workspaces', jsonOptions('POST', { name }));
+      const created: { id: number; name: string } = await response.json();
+
+      setWorkspaces((current) => [...current, { ...created, role: 'admin' }]);
+      setWorkspaceName('');
+      openWorkspace(created.id);
+    } catch (caughtError) {
+      setError(errorText(caughtError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="app-layout">
+      <aside className="sidebar">
+        <nav aria-label="Navigation principale">
+          <button
+            type="button"
+            className={page === 'personal' ? 'nav-link active' : 'nav-link'}
+            aria-current={page === 'personal' ? 'page' : undefined}
+            onClick={() => setPage('personal')}
+          >
+            Mes tâches personnelles
+          </button>
+
+          <button
+            type="button"
+            className={page === 'groups' ? 'nav-link active' : 'nav-link'}
+            aria-current={page === 'groups' ? 'page' : undefined}
+            onClick={() => {
+              setPage('groups');
+              setWorkspaceId(null);
+              setTab('tasks');
+            }}
+          >
+            Mes groupes de travail <span aria-hidden="true">›</span>
+          </button>
+        </nav>
+
+        <div className="sidebar-account">
+          <span className="account-email">{email}</span>
+          <button type="button" className="text-button" onClick={() => onLogout()}>
+            Se déconnecter
+          </button>
+        </div>
+      </aside>
+
+      <main className="app-content">
+        <header className="page-header">
+          <div>
+            <h1>Espace de travail</h1>
+            <p className="page-subtitle">
+              {page === 'personal'
+                ? 'Mes tâches personnelles'
+                : workspace?.name ?? 'Mes groupes de travail'}
+            </p>
+          </div>
+
+          {page === 'groups' && workspace && (
+            <div className="group-picker">
+              <label className="sr-only" htmlFor="group-picker">Choisir un groupe</label>
+              <select
+                id="group-picker"
+                value={workspace.id}
+                onChange={(event) => openWorkspace(Number(event.target.value))}
+              >
+                {workspaces.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </header>
+
+        {page === 'personal' ? (
+          <Tasks key="personal" request={request} />
+        ) : (
+          <>
+            {error && <p className="notice error" role="alert">{error}</p>}
+
+            {loading ? (
+              <p className="empty-state" role="status">Chargement des groupes…</p>
+            ) : workspace ? (
+              <>
+                <div className="group-toolbar">
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setWorkspaceId(null)}
+                  >
+                    ← Tous mes groupes
+                  </button>
+                  <span className="role-badge">{roleLabels[workspace.role]}</span>
+                </div>
+
+                <nav className="group-tabs" aria-label="Pages du groupe">
+                  <button
+                    type="button"
+                    className={tab === 'tasks' ? 'tab active' : 'tab'}
+                    aria-current={tab === 'tasks' ? 'page' : undefined}
+                    onClick={() => setTab('tasks')}
+                  >
+                    Tâches
+                  </button>
+                  <button
+                    type="button"
+                    className={tab === 'users' ? 'tab active' : 'tab'}
+                    aria-current={tab === 'users' ? 'page' : undefined}
+                    onClick={() => setTab('users')}
+                  >
+                    Utilisateurs
+                  </button>
+                </nav>
+
+                {tab === 'tasks' ? (
+                  <Tasks key={`tasks-${workspace.id}`} workspace={workspace} request={request} />
+                ) : (
+                  <Users
+                    key={`users-${workspace.id}`}
+                    workspace={workspace}
+                    request={request}
+                    connectedEmail={email}
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                <div className="groups-heading">
+                  <h2>Mes groupes</h2>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    aria-expanded={showCreate}
+                    disabled={busy}
+                    onClick={() => setShowCreate((current) => !current)}
+                  >
+                    {showCreate ? 'Fermer' : 'Créer un groupe'}
+                  </button>
+                </div>
+
+                {showCreate && (
+                  <section className="panel">
+                    <h2>Nouveau groupe</h2>
+                    <form className="create-group-form" onSubmit={createWorkspace}>
+                      <label className="sr-only" htmlFor="group-name">Nom du groupe</label>
+                      <input
+                        id="group-name"
+                        placeholder="Ex. Notre projet"
+                        value={workspaceName}
+                        onChange={(event) => setWorkspaceName(event.target.value)}
+                        maxLength={100}
+                        required
+                        disabled={busy}
+                      />
+                      <button className="primary-button" disabled={busy}>
+                        {busy ? 'Création…' : 'Créer le groupe'}
+                      </button>
+                    </form>
+                  </section>
+                )}
+
+                {workspaces.length === 0 ? (
+                  !error && <div className="panel empty-state">Aucun groupe pour le moment.</div>
+                ) : (
+                  <ul className="group-list">
+                    {workspaces.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          className="group-card"
+                          disabled={busy}
+                          onClick={() => openWorkspace(item.id)}
+                        >
+                          <span className="group-card-name">{item.name}</span>
+                          <span className="group-card-role">{roleLabels[item.role]}</span>
+                          <span className="group-arrow" aria-hidden="true">›</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function Tasks({
+  workspace,
+  request,
+}: {
+  workspace?: Workspace;
+  request: ApiRequest;
+}) {
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [selected, setSelected] = useState<Todo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'done'>('all');
+
+  const workspaceId = workspace?.id;
+  const canWrite = !workspace || workspace.role === 'admin' || workspace.role === 'member';
+
+  const path = useCallback(
+    (id?: number) =>
+      `/todos${id === undefined ? '' : `/${id}`}${
+        workspaceId === undefined ? '' : `?workspaceId=${workspaceId}`
+      }`,
+    [workspaceId],
   );
 
   useEffect(() => {
@@ -311,343 +536,468 @@ function TodosPage({
 
     async function loadTodos() {
       try {
-        const response = await request('/todos', {
-          signal: controller.signal,
-        });
-
+        const response = await request(path(), { signal: controller.signal });
         const data: Todo[] = await response.json();
 
-        if (!Array.isArray(data)) {
-          throw new Error('La liste reçue est incorrecte.');
-        }
-
-        if (!controller.signal.aborted) {
-          setTodos(data);
-        }
+        if (!Array.isArray(data)) throw new Error('La liste reçue est incorrecte.');
+        if (!controller.signal.aborted) setTodos(data);
       } catch (caughtError) {
-        if (!controller.signal.aborted) {
-          setError(
-            caughtError instanceof Error
-              ? caughtError.message
-              : 'Impossible de récupérer les tâches.',
-          );
-        }
+        if (!controller.signal.aborted) setError(errorText(caughtError));
       } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
 
     void loadTodos();
-
     return () => controller.abort();
-  }, [request]);
+  }, [request, path]);
 
   async function runAction(action: () => Promise<void>) {
-    if (busy) {
-      return;
-    }
-
+    if (busy) return;
     setBusy(true);
     setError('');
 
     try {
       await action();
     } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : 'Une erreur est survenue.',
-      );
+      setError(errorText(caughtError));
     } finally {
       setBusy(false);
     }
   }
 
-  async function createTodo(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!newTitle.trim()) {
-      return;
-    }
+    if (!canWrite || loading || !title.trim()) return;
 
     await runAction(async () => {
-      const response = await request('/todos', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: newTitle.trim(),
-          description: newDescription.trim(),
-        }),
-      });
-
-      const createdTodo: Todo = await response.json();
-
-      setTodos((current) => [...current, createdTodo]);
-      setNewTitle('');
-      setNewDescription('');
-    });
-  }
-
-  async function updateTodo(
-    id: number,
-    changes: {
-      title?: string;
-      description?: string;
-      completed?: boolean;
-    },
-  ) {
-    const response = await request(`/todos/${id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(changes),
-    });
-
-    const updatedTodo: Todo = await response.json();
-
-    setTodos((current) =>
-      current.map((todo) =>
-        todo.id === id ? updatedTodo : todo,
-      ),
-    );
-
-    setSelectedTodo((current) =>
-      current?.id === id ? updatedTodo : current,
-    );
-  }
-
-  async function editTodo(todo: Todo) {
-    const title = window.prompt(
-      'Entrez le nouveau titre :',
-      todo.title,
-    );
-
-    if (title === null || !title.trim()) {
-      return;
-    }
-
-    const description = window.prompt(
-      'Entrez la description (facultative) :',
-      todo.description ?? '',
-    );
-
-    if (description === null) {
-      return;
-    }
-
-    await runAction(() =>
-      updateTodo(todo.id, {
+      const response = await request(path(), jsonOptions('POST', {
         title: title.trim(),
         description: description.trim(),
-      }),
-    );
-  }
+      }));
+      const created: Todo = await response.json();
 
-  async function deleteTodo(id: number) {
-    const confirmed = window.confirm(
-      'Voulez-vous vraiment supprimer cette tâche ?',
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    await runAction(async () => {
-      await request(`/todos/${id}`, {
-        method: 'DELETE',
-      });
-
-      setTodos((current) =>
-        current.filter((todo) => todo.id !== id),
-      );
-
-      setSelectedTodo((current) =>
-        current?.id === id ? null : current,
-      );
+      setTodos((current) => [...current, created]);
+      setTitle('');
+      setDescription('');
     });
   }
 
-  async function showTodoDetails(id: number) {
+  async function update(
+    id: number,
+    changes: { title?: string; description?: string; completed?: boolean },
+  ) {
+    if (!canWrite) return;
+
+    const response = await request(path(id), jsonOptions('PATCH', changes));
+    const updated: Todo = await response.json();
+
+    setTodos((current) => current.map((todo) => todo.id === id ? updated : todo));
+    setSelected((current) => current?.id === id ? updated : current);
+  }
+
+  async function edit(todo: Todo) {
+    if (!canWrite || busy) return;
+
+    const nextTitle = window.prompt('Nouveau titre :', todo.title);
+    if (nextTitle === null || !nextTitle.trim()) return;
+
+    const nextDescription = window.prompt('Description :', todo.description ?? '');
+    if (nextDescription === null) return;
+
+    await runAction(() => update(todo.id, {
+      title: nextTitle.trim(),
+      description: nextDescription.trim(),
+    }));
+  }
+
+  async function remove(id: number) {
+    if (!canWrite || busy || !window.confirm('Supprimer cette tâche ?')) return;
+
     await runAction(async () => {
-      const response = await request(`/todos/${id}`);
-      const details: Todo = await response.json();
-      setSelectedTodo(details);
+      await request(path(id), { method: 'DELETE' });
+      setTodos((current) => current.filter((todo) => todo.id !== id));
+      setSelected((current) => current?.id === id ? null : current);
+    });
+  }
+
+  const visibleTodos = todos.filter((todo) =>
+    filter === 'all' || (filter === 'done' ? todo.completed : !todo.completed),
+  );
+
+  return (
+    <>
+      {error && <p className="notice error" role="alert">{error}</p>}
+
+      {canWrite ? (
+        <section className="panel">
+          <h2>Ajouter une tâche</h2>
+          <form className="task-form" onSubmit={create}>
+            <div className="form-row">
+              <label htmlFor="task-title">Titre</label>
+              <input
+                id="task-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                maxLength={255}
+                disabled={busy || loading}
+                required
+              />
+            </div>
+            <div className="form-row">
+              <label htmlFor="task-description">Description</label>
+              <textarea
+                id="task-description"
+                placeholder="Facultative"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                disabled={busy || loading}
+                rows={2}
+              />
+            </div>
+            <div className="form-actions">
+              <button className="primary-button" disabled={busy || loading}>
+                Ajouter
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : (
+        <p className="notice">Accès en lecture seule.</p>
+      )}
+
+      <section className="panel">
+        <div className="section-heading">
+          <h2>{workspace ? 'Tâches du groupe' : 'Mes tâches personnelles'}</h2>
+        </div>
+
+        <div className="filter-tabs" aria-label="Filtrer les tâches">
+          {([
+            ['all', 'Toutes'],
+            ['pending', 'À faire'],
+            ['done', 'Terminées'],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={filter === value ? 'filter active' : 'filter'}
+              aria-pressed={filter === value}
+              onClick={() => setFilter(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <p className="empty-state" role="status">Chargement des tâches…</p>
+        ) : visibleTodos.length === 0 ? (
+          !error && (
+            <p className="empty-state">
+              {todos.length === 0
+                ? 'Aucune tâche pour le moment.'
+                : 'Aucune tâche dans cette catégorie.'}
+            </p>
+          )
+        ) : (
+          <ul className="todo-list">
+            {visibleTodos.map((todo) => (
+              <li className="todo-card" key={todo.id}>
+                <div className="todo-heading">
+                  <div className="todo-copy">
+                    <h3>{todo.title}</h3>
+                    {todo.description && (
+                      <p className="todo-description">{todo.description}</p>
+                    )}
+                  </div>
+                  <strong className={`todo-status ${todo.completed ? 'done' : ''}`}>
+                    {todo.completed ? 'TERMINÉE' : 'À FAIRE'}
+                  </strong>
+                </div>
+
+                <div className="todo-actions">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void runAction(async () => {
+                      const response = await request(path(todo.id));
+                      setSelected(await response.json() as Todo);
+                    })}
+                  >
+                    Voir le détail
+                  </button>
+
+                  {canWrite && (
+                    <>
+                      <button type="button" disabled={busy} onClick={() => void edit(todo)}>
+                        Modifier
+                      </button>
+                      <button
+                        type="button"
+                        className="complete-button"
+                        disabled={busy}
+                        onClick={() => void runAction(() => update(todo.id, {
+                          completed: !todo.completed,
+                        }))}
+                      >
+                        {todo.completed ? 'Remettre à faire' : 'Terminer'}
+                      </button>
+                      <button
+                        type="button"
+                        className="delete-button"
+                        disabled={busy}
+                        onClick={() => void remove(todo.id)}
+                      >
+                        Supprimer
+                      </button>
+                    </>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {selected && (
+          <section className="todo-details" aria-label="Détail de la tâche">
+            <h3>{selected.title}</h3>
+            <p>{selected.description || 'Aucune description.'}</p>
+            <p><strong>Numéro : </strong>{selected.id}</p>
+            <p>
+              <strong>État : </strong>
+              {selected.completed ? 'TERMINÉE' : 'À FAIRE'}
+            </p>
+            {selected.createdAt && (
+              <p>
+                <strong>Créée le : </strong>
+                {new Date(selected.createdAt).toLocaleString('fr-FR')}
+              </p>
+            )}
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setSelected(null)}
+            >
+              Fermer
+            </button>
+          </section>
+        )}
+      </section>
+    </>
+  );
+}
+
+function Users({
+  workspace,
+  request,
+  connectedEmail,
+}: {
+  workspace: Workspace;
+  request: ApiRequest;
+  connectedEmail: string;
+}) {
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState('');
+  const [refresh, setRefresh] = useState(0);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<Role>('member');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  const membersPath = `/workspaces/${workspace.id}/members`;
+  const isAdmin = workspace.role === 'admin';
+  const myEmail = connectedEmail.toLowerCase();
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadMembers() {
+      try {
+        const response = await request(membersPath, {
+          signal: controller.signal,
+        });
+        const data: GroupMember[] = await response.json();
+
+        if (!Array.isArray(data)) throw new Error('La liste des membres est incorrecte.');
+        if (!controller.signal.aborted) setMembers(data);
+      } catch (caughtError) {
+        if (!controller.signal.aborted) setListError(errorText(caughtError));
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+
+    void loadMembers();
+    return () => controller.abort();
+  }, [request, membersPath, refresh]);
+
+  async function runMemberAction(action: () => Promise<void>) {
+    if (!isAdmin || busy || loading) return;
+
+    setBusy(true);
+    setError('');
+    setMessage('');
+
+    try {
+      await action();
+    } catch (caughtError) {
+      setError(errorText(caughtError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const memberEmail = email.trim().toLowerCase();
+    if (!memberEmail) return;
+
+    await runMemberAction(async () => {
+      await request(membersPath, jsonOptions('POST', { email: memberEmail, role }));
+      setEmail('');
+      setMessage(`${memberEmail} a été ajouté au groupe.`);
+      setListError('');
+      setLoading(true);
+      setRefresh((current) => current + 1);
+    });
+  }
+
+  async function changeMemberRole(member: GroupMember, newRole: Role) {
+    if (member.email.toLowerCase() === myEmail || member.role === newRole) return;
+
+    await runMemberAction(async () => {
+      const response = await request(
+        `${membersPath}/${member.id}`,
+        jsonOptions('PATCH', { role: newRole }),
+      );
+      const updated: { id: number; role: Role } = await response.json();
+
+      setMembers((current) => current.map((item) =>
+        item.id === updated.id ? { ...item, role: updated.role } : item,
+      ));
+      setMessage(`Le rôle de ${member.email} a été modifié.`);
+    });
+  }
+
+  async function removeGroupMember(member: GroupMember) {
+    if (!isAdmin || busy || loading || member.email.toLowerCase() === myEmail) return;
+    if (!window.confirm(`Retirer ${member.email} de ce groupe ?`)) return;
+
+    await runMemberAction(async () => {
+      await request(`${membersPath}/${member.id}`, { method: 'DELETE' });
+      setMembers((current) => current.filter((item) => item.id !== member.id));
+      setMessage(`${member.email} a été retiré du groupe.`);
     });
   }
 
   return (
-    <main>
-      <h1>Mes tâches</h1>
+    <>
+      <section className="panel">
+        <div className="section-heading">
+          <h2>Membres du groupe</h2>
+        </div>
 
-      <p>Connecté avec : {email}</p>
+        {error && <p className="notice error" role="alert">{error}</p>}
+        {message && <p className="notice success" role="status">{message}</p>}
 
-      <button type="button" onClick={() => onLogout()}>
-        Se déconnecter
-      </button>
+        {loading ? (
+          <p role="status">Chargement des membres…</p>
+        ) : listError ? (
+          <p className="notice error" role="alert">{listError}</p>
+        ) : members.length === 0 ? (
+          <p>Aucun membre à afficher.</p>
+        ) : (
+          <ul className="todo-list">
+            {members.map((member) => {
+              const canManage = isAdmin && member.email.toLowerCase() !== myEmail;
 
-      {error && (
-        <p className="error-message" role="alert">
-          {error}
-        </p>
-      )}
+              return (
+                <li className="todo-card" key={member.id}>
+                  <div className="todo-heading" style={{ flexWrap: 'wrap' }}>
+                    <p>{member.email}</p>
 
-      {loading ? (
-        <p>Chargement des tâches...</p>
-      ) : (
-        <>
-          <form onSubmit={createTodo}>
-            <input
-              type="text"
-              aria-label="Titre de la nouvelle tâche"
-              placeholder="Titre de la nouvelle tâche"
-              value={newTitle}
-              onChange={(event) =>
-                setNewTitle(event.target.value)
-              }
-              maxLength={255}
-              required
-              disabled={busy}
-            />
-
-            <input
-              type="text"
-              aria-label="Description de la nouvelle tâche"
-              placeholder="Description (facultative)"
-              value={newDescription}
-              onChange={(event) =>
-                setNewDescription(event.target.value)
-              }
-              disabled={busy}
-            />
-
-            <button type="submit" disabled={busy}>
-              Ajouter
-            </button>
-          </form>
-
-          {selectedTodo && (
-            <section className="todo-details">
-              <h2>Détail de la tâche</h2>
-
-              <p>
-                <strong>Numéro :</strong> {selectedTodo.id}
-              </p>
-
-              <p>
-                <strong>Titre :</strong> {selectedTodo.title}
-              </p>
-
-              <p>
-                <strong>Description :</strong>{' '}
-                {selectedTodo.description?.trim() ||
-                  'Aucune description'}
-              </p>
-
-              <p>
-                <strong>État :</strong>{' '}
-                {selectedTodo.completed
-                  ? 'TERMINÉE'
-                  : 'À FAIRE'}
-              </p>
-
-              {selectedTodo.createdAt && (
-                <p>
-                  <strong>Date de création :</strong>{' '}
-                  {new Date(
-                    selectedTodo.createdAt,
-                  ).toLocaleString('fr-FR')}
-                </p>
-              )}
-
-              <button
-                type="button"
-                className="button-close"
-                onClick={() => setSelectedTodo(null)}
-              >
-                Fermer
-              </button>
-            </section>
-          )}
-
-          {todos.length === 0 ? (
-            <p>Aucune tâche pour le moment.</p>
-          ) : (
-            <ul>
-              {todos.map((todo) => (
-                <li key={todo.id}>
-                  <div className="todo-information">
-                    <span className="todo-title">
-                      {todo.title}
-                    </span>
-
-                    <strong className="todo-status">
-                      {todo.completed
-                        ? 'TERMINÉE'
-                        : 'À FAIRE'}
-                    </strong>
+                    {canManage ? (
+                      <select
+                        aria-label={`Rôle de ${member.email}`}
+                        style={{ width: 'auto' }}
+                        value={member.role}
+                        disabled={busy}
+                        onChange={(event) =>
+                          void changeMemberRole(member, event.target.value as Role)
+                        }
+                      >
+                        <option value="member">Membre</option>
+                        <option value="viewer">Lecture seule</option>
+                        <option value="admin">Administrateur</option>
+                      </select>
+                    ) : (
+                      <span className="role-badge">{roleLabels[member.role]}</span>
+                    )}
                   </div>
 
-                  <div className="todo-actions">
-                    <button
-                      type="button"
-                      className="button-details"
-                      disabled={busy}
-                      onClick={() =>
-                        showTodoDetails(todo.id)
-                      }
-                    >
-                      Voir le détail
-                    </button>
-
-                    <button
-                      type="button"
-                      className="button-edit"
-                      disabled={busy}
-                      onClick={() => editTodo(todo)}
-                    >
-                      Modifier
-                    </button>
-
-                    <button
-                      type="button"
-                      className="button-toggle"
-                      disabled={busy}
-                      onClick={() =>
-                        runAction(() =>
-                          updateTodo(todo.id, {
-                            completed: !todo.completed,
-                          }),
-                        )
-                      }
-                    >
-                      {todo.completed
-                        ? 'Remettre à faire'
-                        : 'Terminer'}
-                    </button>
-
-                    <button
-                      type="button"
-                      className="button-delete"
-                      disabled={busy}
-                      onClick={() => deleteTodo(todo.id)}
-                    >
-                      Supprimer
-                    </button>
-                  </div>
+                  {canManage && (
+                    <div className="todo-actions">
+                      <button
+                        type="button"
+                        className="delete-button"
+                        aria-label={`Retirer ${member.email} du groupe`}
+                        disabled={busy}
+                        onClick={() => void removeGroupMember(member)}
+                      >
+                        Retirer du groupe
+                      </button>
+                    </div>
+                  )}
                 </li>
-              ))}
-            </ul>
-          )}
-        </>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {isAdmin && (
+        <section className="panel">
+          <h2>Ajouter un utilisateur</h2>
+          <p className="helper-text">La personne doit déjà avoir créé son compte.</p>
+
+          <form className="task-form" onSubmit={addMember}>
+            <div className="form-row">
+              <label htmlFor="member-email">E-mail</label>
+              <input
+                id="member-email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+                disabled={busy}
+              />
+            </div>
+
+            <div className="form-row">
+              <label htmlFor="member-role">Rôle</label>
+              <select
+                id="member-role"
+                value={role}
+                onChange={(event) => setRole(event.target.value as Role)}
+                disabled={busy}
+              >
+                <option value="member">Membre</option>
+                <option value="viewer">Lecture seule</option>
+                <option value="admin">Administrateur</option>
+              </select>
+            </div>
+
+            <div className="form-actions">
+              <button className="primary-button" disabled={busy || loading}>
+                Ajouter au groupe
+              </button>
+            </div>
+          </form>
+        </section>
       )}
-    </main>
+    </>
   );
 }
 
