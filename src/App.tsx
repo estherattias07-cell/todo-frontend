@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import './App.css';
 
 type Role = 'admin' | 'member' | 'viewer';
@@ -504,6 +504,48 @@ function Dashboard({
   );
 }
 
+type TaskDialog =
+  | { kind: 'new' }
+  | { kind: 'edit' | 'delete' | 'details'; todo: Todo };
+
+function AppDialog({
+  title,
+  busy = false,
+  dismiss,
+  children,
+}: {
+  title: string;
+  busy?: boolean;
+  dismiss: () => void;
+  children: ReactNode;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    const element = dialogRef.current;
+    if (!element) return;
+    element.showModal();
+    return () => element.close();
+  }, []);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="app-dialog"
+      aria-labelledby={titleId}
+      aria-busy={busy}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) dismiss();
+      }}
+    >
+      <h2 id={titleId}>{title}</h2>
+      {children}
+    </dialog>
+  );
+}
+
 function Tasks({
   workspace,
   request,
@@ -514,7 +556,8 @@ function Tasks({
   const [todos, setTodos] = useState<Todo[]>([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [selected, setSelected] = useState<Todo | null>(null);
+  const [dialog, setDialog] = useState<TaskDialog | null>(null);
+  const [dialogError, setDialogError] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -552,35 +595,48 @@ function Tasks({
     return () => controller.abort();
   }, [request, path]);
 
-  async function runAction(action: () => Promise<void>) {
+  function openDialog(next: TaskDialog) {
+    setDialogError('');
+    if (next.kind === 'new' || next.kind === 'edit') {
+      setTitle(next.kind === 'edit' ? next.todo.title : '');
+      setDescription(next.kind === 'edit' ? next.todo.description ?? '' : '');
+    }
+    setDialog(next);
+  }
+
+  async function runAction(action: () => Promise<void>, inDialog = false) {
     if (busy) return;
     setBusy(true);
-    setError('');
+    if (inDialog) setDialogError('');
+    else setError('');
 
     try {
       await action();
     } catch (caughtError) {
-      setError(errorText(caughtError));
+      if (inDialog) setDialogError(errorText(caughtError));
+      else setError(errorText(caughtError));
     } finally {
       setBusy(false);
     }
   }
 
-  async function create(event: FormEvent<HTMLFormElement>) {
+  async function saveTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canWrite || loading || !title.trim()) return;
+    if (dialog?.kind !== 'new' && dialog?.kind !== 'edit') return;
 
     await runAction(async () => {
-      const response = await request(path(), jsonOptions('POST', {
-        title: title.trim(),
-        description: description.trim(),
-      }));
-      const created: Todo = await response.json();
-
-      setTodos((current) => [...current, created]);
-      setTitle('');
-      setDescription('');
-    });
+      const changes = { title: title.trim(), description: description.trim() };
+      if (dialog.kind === 'edit') {
+        await update(dialog.todo.id, changes);
+      } else {
+        const response = await request(path(), jsonOptions('POST', changes));
+        const created: Todo = await response.json();
+        setTodos((current) => [...current, created]);
+        setFilter('all');
+      }
+      setDialog(null);
+    }, true);
   }
 
   async function update(
@@ -593,32 +649,17 @@ function Tasks({
     const updated: Todo = await response.json();
 
     setTodos((current) => current.map((todo) => todo.id === id ? updated : todo));
-    setSelected((current) => current?.id === id ? updated : current);
   }
 
-  async function edit(todo: Todo) {
-    if (!canWrite || busy) return;
-
-    const nextTitle = window.prompt('Nouveau titre :', todo.title);
-    if (nextTitle === null || !nextTitle.trim()) return;
-
-    const nextDescription = window.prompt('Description :', todo.description ?? '');
-    if (nextDescription === null) return;
-
-    await runAction(() => update(todo.id, {
-      title: nextTitle.trim(),
-      description: nextDescription.trim(),
-    }));
-  }
-
-  async function remove(id: number) {
-    if (!canWrite || busy || !window.confirm('Supprimer cette tâche ?')) return;
+  async function remove() {
+    if (!canWrite || dialog?.kind !== 'delete') return;
+    const id = dialog.todo.id;
 
     await runAction(async () => {
       await request(path(id), { method: 'DELETE' });
       setTodos((current) => current.filter((todo) => todo.id !== id));
-      setSelected((current) => current?.id === id ? null : current);
-    });
+      setDialog(null);
+    }, true);
   }
 
   const visibleTodos = todos.filter((todo) =>
@@ -628,47 +669,21 @@ function Tasks({
   return (
     <>
       {error && <p className="notice error" role="alert">{error}</p>}
-
-      {canWrite ? (
-        <section className="panel">
-          <h2>Ajouter une tâche</h2>
-          <form className="task-form" onSubmit={create}>
-            <div className="form-row">
-              <label htmlFor="task-title">Titre</label>
-              <input
-                id="task-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                maxLength={255}
-                disabled={busy || loading}
-                required
-              />
-            </div>
-            <div className="form-row">
-              <label htmlFor="task-description">Description</label>
-              <textarea
-                id="task-description"
-                placeholder="Facultative"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                disabled={busy || loading}
-                rows={2}
-              />
-            </div>
-            <div className="form-actions">
-              <button className="primary-button" disabled={busy || loading}>
-                Ajouter
-              </button>
-            </div>
-          </form>
-        </section>
-      ) : (
-        <p className="notice">Accès en lecture seule.</p>
-      )}
+      {!canWrite && <p className="notice">Accès en lecture seule.</p>}
 
       <section className="panel">
-        <div className="section-heading">
+        <div className="section-heading tasks-header">
           <h2>{workspace ? 'Tâches du groupe' : 'Mes tâches personnelles'}</h2>
+          {canWrite && (
+            <button
+              type="button"
+              className="secondary-button new-task-button"
+              disabled={busy || loading}
+              onClick={() => openDialog({ kind: 'new' })}
+            >
+              <span aria-hidden="true">+</span> Nouvelle tâche
+            </button>
+          )}
         </div>
 
         <div className="filter-tabs" aria-label="Filtrer les tâches">
@@ -721,7 +736,7 @@ function Tasks({
                     disabled={busy}
                     onClick={() => void runAction(async () => {
                       const response = await request(path(todo.id));
-                      setSelected(await response.json() as Todo);
+                      openDialog({ kind: 'details', todo: await response.json() as Todo });
                     })}
                   >
                     Voir le détail
@@ -729,7 +744,11 @@ function Tasks({
 
                   {canWrite && (
                     <>
-                      <button type="button" disabled={busy} onClick={() => void edit(todo)}>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => openDialog({ kind: 'edit', todo })}
+                      >
                         Modifier
                       </button>
                       <button
@@ -746,7 +765,7 @@ function Tasks({
                         type="button"
                         className="delete-button"
                         disabled={busy}
-                        onClick={() => void remove(todo.id)}
+                        onClick={() => openDialog({ kind: 'delete', todo })}
                       >
                         Supprimer
                       </button>
@@ -757,32 +776,93 @@ function Tasks({
             ))}
           </ul>
         )}
+      </section>
 
-        {selected && (
-          <section className="todo-details" aria-label="Détail de la tâche">
-            <h3>{selected.title}</h3>
-            <p>{selected.description || 'Aucune description.'}</p>
-            <p><strong>Numéro : </strong>{selected.id}</p>
-            <p>
-              <strong>État : </strong>
-              {selected.completed ? 'TERMINÉE' : 'À FAIRE'}
-            </p>
-            {selected.createdAt && (
-              <p>
-                <strong>Créée le : </strong>
-                {new Date(selected.createdAt).toLocaleString('fr-FR')}
-              </p>
-            )}
+      {(dialog?.kind === 'new' || dialog?.kind === 'edit') && (
+        <AppDialog
+          title={dialog.kind === 'new' ? 'Nouvelle tâche' : 'Modifier la tâche'}
+          busy={busy}
+          dismiss={() => setDialog(null)}
+        >
+          {dialogError && <p className="notice error" role="alert">{dialogError}</p>}
+          <form className="dialog-form" onSubmit={saveTask}>
+            <label htmlFor="task-title">Titre</label>
+            <input
+              id="task-title"
+              autoFocus
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              maxLength={255}
+              readOnly={busy}
+              required
+            />
+            <label htmlFor="task-description">Description (facultative)</label>
+            <textarea
+              id="task-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              readOnly={busy}
+              rows={3}
+            />
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={busy}
+                onClick={() => setDialog(null)}
+              >
+                Annuler
+              </button>
+              <button type="submit" className="primary-button" disabled={busy || !title.trim()}>
+                {dialog.kind === 'new' ? 'Ajouter' : 'Enregistrer'}
+              </button>
+            </div>
+          </form>
+        </AppDialog>
+      )}
+
+      {dialog?.kind === 'delete' && (
+        <AppDialog title="Supprimer la tâche ?" busy={busy} dismiss={() => setDialog(null)}>
+          <p>« {dialog.todo.title} » sera supprimée définitivement.</p>
+          {dialogError && <p className="notice error" role="alert">{dialogError}</p>}
+          <div className="dialog-actions">
             <button
               type="button"
               className="secondary-button"
-              onClick={() => setSelected(null)}
+              autoFocus
+              disabled={busy}
+              onClick={() => setDialog(null)}
             >
+              Annuler
+            </button>
+            <button
+              type="button"
+              className="danger-button"
+              disabled={busy}
+              onClick={() => void remove()}
+            >
+              Supprimer
+            </button>
+          </div>
+        </AppDialog>
+      )}
+
+      {dialog?.kind === 'details' && (
+        <AppDialog title={dialog.todo.title} dismiss={() => setDialog(null)}>
+          <div className="dialog-details">
+            <p>{dialog.todo.description || 'Aucune description.'}</p>
+            <p><strong>État : </strong>{dialog.todo.completed ? 'Terminée' : 'À faire'}</p>
+            {dialog.todo.createdAt && (
+              <p><strong>Créée le : </strong>{new Date(dialog.todo.createdAt).toLocaleString('fr-FR')}</p>
+            )}
+          </div>
+          <div className="dialog-actions">
+            <button type="button" className="secondary-button" onClick={() => setDialog(null)}>
               Fermer
             </button>
-          </section>
-        )}
-      </section>
+          </div>
+        </AppDialog>
+      )}
     </>
   );
 }

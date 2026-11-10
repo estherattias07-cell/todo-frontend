@@ -750,3 +750,69 @@ h3 {
     padding: 24px;
   }
 }
+.tasks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.new-task-button {
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.new-task-button span {
+  margin-right: 4px;
+  font-size: 17px;
+}
+
+.app-dialog {
+  width: min(440px, calc(100% - 28px));
+  max-height: calc(100% - 28px);
+  margin: auto;
+  padding: clamp(18px, 5vw, 28px);
+  overflow: auto;
+  border: 1px solid #dce5d8;
+  border-radius: 14px;
+  background: #fff;
+  color: #35413c;
+  box-shadow: 0 16px 48px #26372c30;
+}
+
+.app-dialog::backdrop {
+  background: #26372c66;
+}
+
+.app-dialog h2 {
+  margin-bottom: 18px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.app-dialog > .dialog-actions {
+  margin-top: 20px;
+}
+
+.dialog-details {
+  display: grid;
+  gap: 8px;
+  white-space: pre-wrap;
+}
+
+.danger-button {
+  background: #934c45;
+  color: #fff;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #783b35;
+}
