@@ -816,3 +816,42 @@ h3 {
 .danger-button:hover:not(:disabled) {
   background: #783b35;
 }
+/* Plus d’espace dans les fenêtres de tâches */
+.app-dialog {
+  box-sizing: border-box;
+  width: min(520px, calc(100% - 32px));
+  padding: clamp(20px, 5vw, 36px);
+}
+
+.app-dialog h2 {
+  margin: 0 0 24px;
+}
+
+.app-dialog .dialog-form {
+  gap: 10px;
+}
+
+.app-dialog .dialog-form label {
+  font-weight: 600;
+}
+
+.app-dialog .dialog-form label:not(:first-child) {
+  margin-top: 12px;
+}
+
+.app-dialog .dialog-form input,
+.app-dialog .dialog-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+}
+
+.app-dialog .dialog-form textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.app-dialog .dialog-actions {
+  gap: 12px;
+  margin-top: 24px;
+}
